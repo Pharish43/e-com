@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: fernwood-inventory-api
+    runtime: python
+    plan: starter
+    buildCommand: python -m compileall -q .
+    startCommand: python admin.py
+    healthCheckPath: /healthz
+    disk:
+      name: fernwood-inventory
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: FERNWOOD_DATA_DIR
+        value: /var/data
+      - key: FRONTEND_ORIGIN
+        sync: false
+      - key: INVENTORY_ADMIN_PASSWORD
+        sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: ORDER_NOTIFICATION_EMAIL
+        sync: false

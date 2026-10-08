@@ -303,18 +303,9 @@
     </aside>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+    <script src="/api-config.js"></script>
     <script>
-      const products = [
-        { id: "", name: "solt Deliciosa", category: "Plants", description: "A leafy statement plant that loves a bright corner.", price: 42, rating: 4.9, stock: 12, emoji: "🌿", color: "#dcebd8", art: "plant" },
-        { id: "snake", name: "Snake Plant", category: "Plants", description: "Low effort, high impact. Happy in almost any light.", price: 28, rating: 4.8, stock: 21, emoji: "🪴", color: "#e7dfd1", art: "snake" },
-        { id: "pothos", name: "Golden Pothos", category: "Plants", description: "An easy-going trailing vine for shelves and sunny spots.", price: 24, rating: 4.9, stock: 16, emoji: "🍃", color: "#e9edce", art: "vine" },
-        { id: "speckled-pot", name: "Speckled pot", category: "Pots", description: "Hand-finished ceramic in a soft clay tone.", price: 22, rating: 4.6, stock: 18, emoji: "🏺", color: "#e8e1d7", art: "pot" },
-        { id: "hanging-planter", name: "Hanging planter", category: "Pots", description: "Perfect for trailing vines and blooms.", price: 30, rating: 4.7, stock: 13, emoji: "🧺", color: "#dfeaf7", art: "basket" },
-        { id: "terracotta-set", name: "Terracotta set", category: "Pots", description: "Three versatile planters with saucers.", price: 36, rating: 4.8, stock: 9, emoji: "🪴", color: "#f3ddca", art: "terracotta" },
-        { id: "pruner", name: "Everyday pruners", category: "Tools", description: "A comfortable little snip for happier, healthier plants.", price: 18, rating: 4.7, stock: 24, emoji: "✂️", color: "#e6e9dd", art: "tool" },
-        { id: "watering-can", name: "Sunday watering can", category: "Tools", description: "A perfectly balanced pour for your indoor jungle.", price: 32, rating: 4.8, stock: 7, emoji: "🚿", color: "#dce9e5", art: "watering" },
-        { id: "plant-food", name: "Slow-grow plant food", category: "Tools", description: "A gentle, easy-to-use boost for lush new leaves.", price: 14, rating: 4.6, stock: 30, emoji: "🌱", color: "#eee6ce", art: "food" }
-      ];
+      const products = [];
       const artSvg = (type) => {
         const graphics = {
           plant: '<path d="M90 121V35" stroke="#609B69" stroke-width="7" stroke-linecap="round"/><path d="M89 75C51 69 46 43 66 29c19 10 27 27 23 46Z" fill="#82BD78"/><path d="M91 64c5-31 27-44 46-34-6 25-22 37-46 34Z" fill="#5E9F67"/><path d="M90 94c-8-28 5-45 29-44 4 22-6 37-29 44Z" fill="#9DCE82"/><path d="M55 119h72l-7 37c-2 9-8 15-17 15H79c-9 0-15-6-17-15l-7-37Z" fill="#B97951"/><path d="M55 119c0-9 7-16 16-16h40c9 0 16 7 16 16v5H55v-5Z" fill="#D29A6A"/>',
@@ -333,6 +324,10 @@
       const grid = document.getElementById("product-grid");
       const drawer = document.getElementById("cart-drawer");
       const overlay = document.getElementById("overlay");
+      const apiBaseUrl = (window.FERNWOOD_API_BASE_URL || "").replace(/\/+$/, "");
+      const apiUrl = (path) => `${apiBaseUrl}${path}`;
+      let inventoryLoaded = false;
+      let inventoryLoadError = false;
       let toastTimeout;
 
       if (location.protocol === "file:") document.getElementById("inventory-link").hidden = true;
@@ -343,13 +338,22 @@
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
       })[char]);
       async function refreshInventory() {
-        if (location.protocol === "file:") return;
+        if (location.protocol === "file:") {
+          inventoryLoadError = true;
+          renderProducts();
+          return;
+        }
         try {
-          const response = await fetch("/api/products", { cache: "no-store" });
+          const response = await fetch(apiUrl("/api/products"), { cache: "no-store" });
           if (!response.ok) throw new Error(`Inventory request failed (${response.status}).`);
           const latest = await response.json();
           if (!Array.isArray(latest)) throw new Error("Inventory response must be a product list.");
-          if (JSON.stringify(products) === JSON.stringify(latest)) return;
+          inventoryLoaded = true;
+          inventoryLoadError = false;
+          if (JSON.stringify(products) === JSON.stringify(latest)) {
+            renderProducts();
+            return;
+          }
           products.splice(0, products.length, ...latest);
           for (const [id, quantity] of Object.entries(state.cart)) {
             const product = products.find((item) => item.id === id);
@@ -362,6 +366,8 @@
           renderProducts();
           renderCart();
         } catch (error) {
+          inventoryLoadError = true;
+          if (!products.length) renderProducts();
           console.error("Could not sync storefront inventory:", error);
         }
       }
@@ -381,7 +387,14 @@
         const found = visibleProducts();
         document.getElementById("result-count").textContent = `${found.length} ${found.length === 1 ? "thoughtful find" : "thoughtful finds"}`;
         if (!found.length) {
-          grid.innerHTML = '<div class="empty-state"><strong>No green things found just yet.</strong>Try another search or category.</div>';
+          const message = inventoryLoadError && !inventoryLoaded
+            ? "The shop inventory could not be loaded. Please try again later."
+            : !inventoryLoaded
+              ? "Loading products from the inventory manager…"
+              : products.length
+                ? "No green things found just yet. Try another search or category."
+                : "No products are available yet. Please check back soon.";
+          grid.innerHTML = `<div class="empty-state"><strong>${message}</strong></div>`;
           return;
         }
         grid.innerHTML = found.map((product) => `
@@ -540,7 +553,7 @@
         button.textContent = "Preparing secure checkout…";
         try {
           await loadRazorpayCheckout();
-          const orderResponse = await fetch("/api/payment/create-order", {
+          const orderResponse = await fetch(apiUrl("/api/payment/create-order"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -571,7 +584,7 @@
             },
             handler: async (paymentResult) => {
               try {
-                const verificationResponse = await fetch("/api/payment/verify", {
+                const verificationResponse = await fetch(apiUrl("/api/payment/verify"), {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify(paymentResult)

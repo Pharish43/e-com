@@ -47,6 +47,18 @@
       "emoji": "🌱",
       "color": "#dcebd8",
       "art": "custom"
+    },
+    {
+      "id": "jum",
+      "name": "jum",
+      "category": "Plants",
+      "description": "bb",
+      "price": 44.0,
+      "rating": null,
+      "stock": 1,
+      "emoji": "🌱",
+      "color": "#dcebd8",
+      "art": "custom"
     }
   ],
   "pending_orders": {},

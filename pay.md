@@ -38,6 +38,35 @@ Email is the order-notification and order-history channel, not a transactional o
 database. Keep the store inbox secure, enable multi-factor authentication, and use
 mailbox retention/backup appropriate for customer and business records.
 
+## Hosting the storefront
+
+The storefront reads products from `GET /api/products`. When the frontend is hosted
+on Vercel, deploy the Python API as a separate Render web service:
+
+1. Deploy this repository on Render using `render.yaml`. The service uses a paid
+   Starter instance with a persistent disk, because Render's ordinary filesystem is
+   temporary and would lose inventory changes after restarts or deployments.
+2. During setup, set `FRONTEND_ORIGIN` to the exact HTTPS origin of the Vercel site,
+   such as `https://your-shop.vercel.app` (no path or trailing slash). Set a strong,
+   unique `INVENTORY_ADMIN_PASSWORD`; add the Razorpay and SMTP secrets as well.
+   Keep secrets in Render's environment settings, never in frontend files or Git.
+3. After Render deploys, copy its service URL from the Render dashboard. Set
+   `window.FERNWOOD_API_BASE_URL` in `api-config.js` to that URL, for example
+   `https://fernwood-inventory-api.onrender.com` (no trailing slash), then deploy the
+   change to Vercel. The Vercel domain must match `FRONTEND_ORIGIN`; update that
+   Render setting if you change or add a custom domain.
+4. Open `/admin` on the Vercel site and sign in with `INVENTORY_ADMIN_PASSWORD`.
+   Products are seeded from the checked-in `products.json` once when the Render disk
+   is first initialized; later inventory edits are saved on that persistent disk and
+   appear on the storefront without another Vercel deployment.
+5. Point the Razorpay webhook directly to
+   `https://<render-service>/api/payment/webhook`.
+
+The storefront has no hard-coded demo catalog: it shows only products returned by
+the API, with an error message if the API cannot be reached. Do not remove Render's
+persistent disk after launch, or its live inventory and pending payment state will
+be lost.
+
 ## Configure email using Gmail
 
 1. Secure the receiving mailbox `harish9.cz@gmail.com` with a unique password and
