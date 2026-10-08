@@ -96,6 +96,37 @@ After changing products or stock in the local inventory manager:
 For another email provider, use its official SMTP hostname, port, and TLS
 requirements. Port 587 uses STARTTLS; port 465 uses implicit TLS.
 
+## Deploy the payment API for the Vercel storefront
+
+The Vercel site is static, so checkout needs the Python API deployed separately.
+This repository includes `render.yaml` for the API and `vercel.json` to route the
+three payment endpoints through Vercel to Render.
+
+1. Commit and push `render.yaml`, `vercel.json`, and the backend code changes.
+   Do not include local payment state from `products.json`.
+2. In Render, create a **Blueprint** from this repository and deploy the
+   `fernwood-inventory-api` service defined by `render.yaml`. Keep its persistent
+   disk enabled; payment idempotency and stock updates are stored there.
+3. In the Render service's **Environment** settings, set these private values:
+   `INVENTORY_ADMIN_PASSWORD`, `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`,
+   `RAZORPAY_WEBHOOK_SECRET`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`, and
+   `ORDER_NOTIFICATION_EMAIL`. Use Test Mode Razorpay credentials first. Do not put
+   secrets in `vercel.json`, `index.html`, or Git.
+4. Wait for the service to deploy, then open
+   `https://fernwood-inventory-api.onrender.com/healthz`. It should return
+   `{"status":"ok"}`. If Render assigned a different service hostname, change the
+   three Render destinations in `vercel.json` to that hostname.
+   Push any hostname change so Vercel redeploys with the correct API rewrite.
+   Keep product publishing separate: publish only `catalog.json` as described
+   above.
+5. Set the Razorpay Test Mode webhook URL to
+   `https://<your-vercel-domain>/api/payment/webhook` and use the same webhook
+   secret configured in Render. Then test checkout from the live Vercel domain.
+
+The public Render service requires `INVENTORY_ADMIN_PASSWORD` before startup, and
+inventory-changing API requests are password-protected. Vercel only routes the
+payment and webhook paths to that service.
+
 ## Test with Razorpay Test Mode
 
 1. In the Razorpay Dashboard, use **Test Mode** API keys and create a webhook for

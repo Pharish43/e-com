@@ -1,13 +1,14 @@
-"""Local Fernwood storefront and inventory manager.
+"""Fernwood storefront and inventory API.
 
-Run with ``py admin.py`` and open http://127.0.0.1:8000.
-The server intentionally listens only on localhost.
+Run locally with ``py admin.py`` and open http://127.0.0.1:8000.
 """
 
 from __future__ import annotations
 
+import hmac
 import json
 import logging
+import os
 import re
 from decimal import Decimal, InvalidOperation
 from http import HTTPStatus
@@ -15,17 +16,20 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
-import payment_gateway
 import local_store
+import payment_gateway
 
 
 BASE_DIR = Path(__file__).resolve().parent
-PRODUCTS_FILE = BASE_DIR / "products.json"
-HOST = "127.0.0.1"
-PORT = 8000
+PRODUCTS_FILE = Path(os.environ.get("FERNWOOD_SEED_FILE", "products.json"))
+if not PRODUCTS_FILE.is_absolute():
+    PRODUCTS_FILE = BASE_DIR / PRODUCTS_FILE
+HOST = os.environ.get("HOST", "127.0.0.1")
+PORT = int(os.environ.get("PORT", "8000"))
 MAX_REQUEST_BYTES = 1_000_000
 STORE_LOCK = local_store.STORE_LOCK
 ALLOWED_CATEGORIES = {"Plants", "Pots", "Tools"}
+
 
 def _load_seed_products() -> list[dict]:
     with STORE_LOCK:
@@ -161,6 +165,16 @@ class StorefrontHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def require_inventory_password(self) -> bool:
+        if HOST in {"127.0.0.1", "localhost", "::1"}:
+            return True
+        expected = os.environ.get("INVENTORY_ADMIN_PASSWORD", "")
+        supplied = self.headers.get("X-Inventory-Password", "")
+        if expected and hmac.compare_digest(supplied, expected):
+            return True
+        self.send_json(HTTPStatus.UNAUTHORIZED, {"error": "Inventory access is protected."})
+        return False
+
     def read_json(self) -> dict:
         if self.headers.get_content_type() != "application/json":
             raise ValueError("Send request data as application/json.")
@@ -194,6 +208,9 @@ class StorefrontHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         path = urlsplit(self.path).path
+        if path == "/healthz":
+            self.send_json(HTTPStatus.OK, {"status": "ok"})
+            return
         if path == "/api/products":
             try:
                 self.send_json(HTTPStatus.OK, load_products())
@@ -292,6 +309,8 @@ class StorefrontHandler(BaseHTTPRequestHandler):
         if path != "/api/products":
             self.send_error(HTTPStatus.NOT_FOUND, "Not found")
             return
+        if not self.require_inventory_password():
+            return
         try:
             product = create_product(self.read_json())
         except ValueError as error:
@@ -305,6 +324,8 @@ class StorefrontHandler(BaseHTTPRequestHandler):
         match = re.fullmatch(r"/api/products/([^/]+)/stock", urlsplit(self.path).path)
         if not match:
             self.send_error(HTTPStatus.NOT_FOUND, "Not found")
+            return
+        if not self.require_inventory_password():
             return
         product_id = unquote(match.group(1))
         try:
@@ -329,6 +350,8 @@ class StorefrontHandler(BaseHTTPRequestHandler):
         if not match:
             self.send_error(HTTPStatus.NOT_FOUND, "Not found")
             return
+        if not self.require_inventory_password():
+            return
         product_id = unquote(match.group(1))
         try:
             with STORE_LOCK:
@@ -343,6 +366,13 @@ class StorefrontHandler(BaseHTTPRequestHandler):
 
 def main() -> None:
     try:
+        if HOST not in {"127.0.0.1", "localhost", "::1"}:
+            if not os.environ.get("INVENTORY_ADMIN_PASSWORD", "").strip():
+                raise SystemExit(
+                    "INVENTORY_ADMIN_PASSWORD is required when binding beyond localhost."
+                )
+            if os.environ.get("FERNWOOD_SEED_FILE"):
+                local_store.sync_seed_products(_load_seed_products)
         load_products()
         server = ThreadingHTTPServer((HOST, PORT), StorefrontHandler)
     except (OSError, RuntimeError) as error:

@@ -1,0 +1,20 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/payment/create-order",
+      "destination": "https://fernwood-inventory-api.onrender.com/api/payment/create-order"
+    },
+    {
+      "source": "/api/payment/verify",
+      "destination": "https://fernwood-inventory-api.onrender.com/api/payment/verify"
+    },
+    {
+      "source": "/api/payment/webhook",
+      "destination": "https://fernwood-inventory-api.onrender.com/api/payment/webhook"
+    },
+    {
+      "source": "/admin",
+      "destination": "/admin.html"
+    }
+  ]
+}

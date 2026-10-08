@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import threading
@@ -10,9 +11,15 @@ from pathlib import Path
 from typing import Any, Callable
 
 
-DATA_FILE = Path(__file__).resolve().with_name("products.json")
+BASE_DIR = Path(__file__).resolve().parent
+DATA_DIR = Path(os.environ.get("FERNWOOD_DATA_DIR", BASE_DIR))
+DATA_FILE = DATA_DIR / "products.json"
 TEMP_FILE = DATA_FILE.with_suffix(".json.tmp")
-CATALOG_FILE = DATA_FILE.with_name("catalog.json")
+CATALOG_FILE = Path(
+    os.environ.get("FERNWOOD_CATALOG_FILE", BASE_DIR / "catalog.json")
+)
+if not CATALOG_FILE.is_absolute():
+    CATALOG_FILE = BASE_DIR / CATALOG_FILE
 CATALOG_TEMP_FILE = CATALOG_FILE.with_suffix(".json.tmp")
 STORE_LOCK = threading.RLock()
 
@@ -27,6 +34,7 @@ def _read_state(seed_loader: Callable[[], list[dict[str, Any]]]) -> dict[str, An
             "products": seed_loader(),
             "pending_orders": {},
             "processed_orders": {},
+            "seed_catalog_hash": None,
         }
         _write_state(state)
         return state
@@ -59,11 +67,13 @@ def _read_state(seed_loader: Callable[[], list[dict[str, Any]]]) -> dict[str, An
         "products": products,
         "pending_orders": pending,
         "processed_orders": processed,
+        "seed_catalog_hash": content.get("seed_catalog_hash"),
     }
 
 
 def _write_state(state: dict[str, Any]) -> None:
     try:
+        DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
         TEMP_FILE.write_text(
             json.dumps(state, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
@@ -92,6 +102,29 @@ def load_products(
         products = _read_state(seed_loader)["products"]
         _write_public_catalog(products)
         return products
+
+
+def sync_seed_products(
+    seed_loader: Callable[[], list[dict[str, Any]]],
+) -> None:
+    """Refresh deployed products when the committed seed catalog changes."""
+    with STORE_LOCK:
+        state = _read_state(seed_loader)
+        seed_products = seed_loader()
+        encoded_seed = json.dumps(
+            seed_products, ensure_ascii=False, sort_keys=True
+        ).encode("utf-8")
+        seed_hash = hashlib.sha256(encoded_seed).hexdigest()
+        if state["seed_catalog_hash"] == seed_hash:
+            return
+
+        seed_ids = {product["id"] for product in seed_products}
+        removed_products = [
+            product for product in state["products"] if product["id"] not in seed_ids
+        ]
+        state["products"] = [*seed_products, *removed_products]
+        state["seed_catalog_hash"] = seed_hash
+        _write_state(state)
 
 
 def add_product(

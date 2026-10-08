@@ -65,6 +65,20 @@ class PaymentGatewayTests(unittest.TestCase):
 
         self.assertEqual(catalog, products)
 
+    def test_seed_catalog_refresh_preserves_runtime_stock_until_catalog_changes(self):
+        local_store.sync_seed_products(self.seed_loader)
+        local_store.set_stock("test-product", 3, self.seed_loader)
+
+        local_store.sync_seed_products(self.seed_loader)
+        self.assertEqual(local_store.load_products(self.seed_loader)[0]["stock"], 3)
+
+        updated_product = {**self.product, "stock": 8}
+        updated_seed_loader = lambda: [copy.deepcopy(updated_product)]
+        local_store.sync_seed_products(updated_seed_loader)
+        self.assertEqual(
+            local_store.load_products(updated_seed_loader)[0]["stock"], 8
+        )
+
     def test_inventory_changes_update_the_publishable_catalog(self):
         local_store.set_stock("test-product", 2, self.seed_loader)
         catalog = json.loads(
