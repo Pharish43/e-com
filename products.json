@@ -37,18 +37,6 @@
       "art": "custom"
     },
     {
-      "id": "huk",
-      "name": "huk",
-      "category": "Plants",
-      "description": "",
-      "price": 33.0,
-      "rating": null,
-      "stock": 1,
-      "emoji": "🌱",
-      "color": "#dcebd8",
-      "art": "custom"
-    },
-    {
       "id": "jum",
       "name": "jum",
       "category": "Plants",

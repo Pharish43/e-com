@@ -10,11 +10,10 @@ from pathlib import Path
 from typing import Any, Callable
 
 
-DATA_DIR = Path(
-    os.environ.get("FERNWOOD_DATA_DIR", str(Path(__file__).resolve().parent))
-)
-DATA_FILE = DATA_DIR / "products.json"
+DATA_FILE = Path(__file__).resolve().with_name("products.json")
 TEMP_FILE = DATA_FILE.with_suffix(".json.tmp")
+CATALOG_FILE = DATA_FILE.with_name("catalog.json")
+CATALOG_TEMP_FILE = CATALOG_FILE.with_suffix(".json.tmp")
 STORE_LOCK = threading.RLock()
 
 
@@ -65,7 +64,6 @@ def _read_state(seed_loader: Callable[[], list[dict[str, Any]]]) -> dict[str, An
 
 def _write_state(state: dict[str, Any]) -> None:
     try:
-        DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
         TEMP_FILE.write_text(
             json.dumps(state, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
@@ -73,6 +71,14 @@ def _write_state(state: dict[str, Any]) -> None:
         os.replace(TEMP_FILE, DATA_FILE)
     except OSError as error:
         raise LocalStoreError(f"Could not save {DATA_FILE.name}: {error}") from error
+    try:
+        CATALOG_TEMP_FILE.write_text(
+            json.dumps(state["products"], ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        os.replace(CATALOG_TEMP_FILE, CATALOG_FILE)
+    except OSError as error:
+        raise LocalStoreError(f"Could not save {CATALOG_FILE.name}: {error}") from error
 
 
 def load_products(

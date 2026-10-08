@@ -1,14 +1,13 @@
-"""Fernwood storefront and inventory API.
+"""Local Fernwood storefront and inventory manager.
 
-Run locally with ``py admin.py`` and open http://127.0.0.1:8000.
+Run with ``py admin.py`` and open http://127.0.0.1:8000.
+The server intentionally listens only on localhost.
 """
 
 from __future__ import annotations
 
-import hmac
 import json
 import logging
-import os
 import re
 from decimal import Decimal, InvalidOperation
 from http import HTTPStatus
@@ -21,46 +20,29 @@ import local_store
 
 
 BASE_DIR = Path(__file__).resolve().parent
-SEED_PRODUCTS_FILE = BASE_DIR / "products.json"
-PRODUCTS_FILE = local_store.DATA_FILE
-HOST = os.environ.get("HOST", "127.0.0.1")
-PORT = int(os.environ.get("PORT", "8000"))
+PRODUCTS_FILE = BASE_DIR / "products.json"
+HOST = "127.0.0.1"
+PORT = 8000
 MAX_REQUEST_BYTES = 1_000_000
 STORE_LOCK = local_store.STORE_LOCK
 ALLOWED_CATEGORIES = {"Plants", "Pots", "Tools"}
 
-
 def _load_seed_products() -> list[dict]:
     with STORE_LOCK:
         if not PRODUCTS_FILE.exists():
-            if not SEED_PRODUCTS_FILE.exists() or SEED_PRODUCTS_FILE == PRODUCTS_FILE:
-                products = []
-            else:
-                try:
-                    seed_content = json.loads(
-                        SEED_PRODUCTS_FILE.read_text(encoding="utf-8")
-                    )
-                except (OSError, json.JSONDecodeError) as error:
-                    raise RuntimeError(
-                        f"Could not read {SEED_PRODUCTS_FILE.name}: {error}"
-                    ) from error
-                if isinstance(seed_content, list):
-                    products = seed_content
-                elif isinstance(seed_content, dict):
-                    products = seed_content.get("products")
-                else:
-                    products = None
-                if not isinstance(products, list):
-                    raise RuntimeError(
-                        f"{SEED_PRODUCTS_FILE.name} must contain a product array."
-                    )
-        else:
             try:
-                products = json.loads(PRODUCTS_FILE.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError) as error:
+                PRODUCTS_FILE.write_text(
+                    "[]\n",
+                    encoding="utf-8",
+                )
+            except OSError as error:
                 raise RuntimeError(
-                    f"Could not read {PRODUCTS_FILE.name}: {error}"
+                    f"Could not create {PRODUCTS_FILE.name}: {error}"
                 ) from error
+        try:
+            products = json.loads(PRODUCTS_FILE.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            raise RuntimeError(f"Could not read {PRODUCTS_FILE.name}: {error}") from error
         if not isinstance(products, list):
             raise RuntimeError(f"{PRODUCTS_FILE.name} must contain a JSON array.")
         used_ids: set[str] = set()
@@ -165,7 +147,7 @@ def create_product(payload: dict) -> dict:
 
 
 class StorefrontHandler(BaseHTTPRequestHandler):
-    server_version = "Fernwood/1.0"
+    server_version = "FernwoodLocal/1.0"
 
     def log_message(self, format_string: str, *args: object) -> None:
         print(f"{self.address_string()} - {format_string % args}")
@@ -176,37 +158,8 @@ class StorefrontHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
-        self.send_header("Vary", "Origin")
-        origin = self.headers.get("Origin")
-        if origin and origin == os.environ.get("FRONTEND_ORIGIN", "").rstrip("/"):
-            self.send_header("Access-Control-Allow-Origin", origin)
         self.end_headers()
         self.wfile.write(body)
-
-    def inventory_authorized(self) -> bool:
-        expected = os.environ.get("INVENTORY_ADMIN_PASSWORD", "").strip()
-        if not expected:
-            return HOST in {"127.0.0.1", "localhost", "::1"}
-        supplied = self.headers.get("X-Inventory-Password", "")
-        return hmac.compare_digest(
-            supplied.encode("utf-8"), expected.encode("utf-8")
-        )
-
-    def do_OPTIONS(self) -> None:
-        origin = self.headers.get("Origin", "")
-        allowed_origin = os.environ.get("FRONTEND_ORIGIN", "").rstrip("/")
-        if not origin or origin != allowed_origin:
-            self.send_error(HTTPStatus.FORBIDDEN, "Origin not allowed")
-            return
-        self.send_response(HTTPStatus.NO_CONTENT)
-        self.send_header("Access-Control-Allow-Origin", origin)
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
-        self.send_header(
-            "Access-Control-Allow-Headers", "Content-Type, X-Inventory-Password"
-        )
-        self.send_header("Access-Control-Max-Age", "600")
-        self.send_header("Vary", "Origin")
-        self.end_headers()
 
     def read_json(self) -> dict:
         if self.headers.get_content_type() != "application/json":
@@ -241,17 +194,6 @@ class StorefrontHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         path = urlsplit(self.path).path
-        if path == "/healthz":
-            self.send_json(HTTPStatus.OK, {"status": "ok"})
-            return
-        if path == "/api/admin/session":
-            if not self.inventory_authorized():
-                self.send_json(
-                    HTTPStatus.UNAUTHORIZED, {"error": "Inventory sign-in required."}
-                )
-                return
-            self.send_json(HTTPStatus.OK, {"authenticated": True})
-            return
         if path == "/api/products":
             try:
                 self.send_json(HTTPStatus.OK, load_products())
@@ -260,13 +202,8 @@ class StorefrontHandler(BaseHTTPRequestHandler):
             return
         if path in {"/", "/index.html"}:
             file_name = "index.html"
-            content_type = "text/html; charset=utf-8"
         elif path in {"/admin", "/admin.html"}:
             file_name = "admin.html"
-            content_type = "text/html; charset=utf-8"
-        elif path == "/api-config.js":
-            file_name = "api-config.js"
-            content_type = "application/javascript; charset=utf-8"
         else:
             self.send_error(HTTPStatus.NOT_FOUND, "Not found")
             return
@@ -276,7 +213,7 @@ class StorefrontHandler(BaseHTTPRequestHandler):
             self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR, f"Could not read {file_name}")
             return
         self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
@@ -355,11 +292,6 @@ class StorefrontHandler(BaseHTTPRequestHandler):
         if path != "/api/products":
             self.send_error(HTTPStatus.NOT_FOUND, "Not found")
             return
-        if not self.inventory_authorized():
-            self.send_json(
-                HTTPStatus.UNAUTHORIZED, {"error": "Inventory sign-in required."}
-            )
-            return
         try:
             product = create_product(self.read_json())
         except ValueError as error:
@@ -373,11 +305,6 @@ class StorefrontHandler(BaseHTTPRequestHandler):
         match = re.fullmatch(r"/api/products/([^/]+)/stock", urlsplit(self.path).path)
         if not match:
             self.send_error(HTTPStatus.NOT_FOUND, "Not found")
-            return
-        if not self.inventory_authorized():
-            self.send_json(
-                HTTPStatus.UNAUTHORIZED, {"error": "Inventory sign-in required."}
-            )
             return
         product_id = unquote(match.group(1))
         try:
@@ -402,11 +329,6 @@ class StorefrontHandler(BaseHTTPRequestHandler):
         if not match:
             self.send_error(HTTPStatus.NOT_FOUND, "Not found")
             return
-        if not self.inventory_authorized():
-            self.send_json(
-                HTTPStatus.UNAUTHORIZED, {"error": "Inventory sign-in required."}
-            )
-            return
         product_id = unquote(match.group(1))
         try:
             with STORE_LOCK:
@@ -420,33 +342,13 @@ class StorefrontHandler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
-    public_host = HOST not in {"127.0.0.1", "localhost", "::1"}
-    if public_host:
-        if not os.environ.get("INVENTORY_ADMIN_PASSWORD", "").strip():
-            raise SystemExit(
-                "INVENTORY_ADMIN_PASSWORD is required when binding beyond localhost."
-            )
-        if not os.environ.get("FRONTEND_ORIGIN", "").strip():
-            raise SystemExit(
-                "FRONTEND_ORIGIN is required when binding beyond localhost."
-            )
-        frontend = urlsplit(os.environ["FRONTEND_ORIGIN"])
-        if (
-            frontend.scheme != "https"
-            or not frontend.netloc
-            or frontend.path not in {"", "/"}
-            or frontend.query
-            or frontend.fragment
-        ):
-            raise SystemExit(
-                "FRONTEND_ORIGIN must be the HTTPS origin of the Vercel site."
-            )
     try:
         load_products()
         server = ThreadingHTTPServer((HOST, PORT), StorefrontHandler)
     except (OSError, RuntimeError) as error:
         raise SystemExit(f"Could not start Fernwood: {error}") from error
-    print(f"Fernwood is listening on {HOST}:{PORT}")
+    print(f"Fernwood is running at http://{HOST}:{PORT}")
+    print(f"Inventory manager: http://{HOST}:{PORT}/admin")
     print("Press Ctrl+C to stop.")
     try:
         server.serve_forever()

@@ -20,10 +20,16 @@ class PaymentGatewayTests(unittest.TestCase):
         root = Path(self.temp_directory.name)
         self.data_file_patch = patch.object(local_store, "DATA_FILE", root / "products.json")
         self.temp_file_patch = patch.object(local_store, "TEMP_FILE", root / "products.json.tmp")
+        self.catalog_file_patch = patch.object(local_store, "CATALOG_FILE", root / "catalog.json")
+        self.catalog_temp_file_patch = patch.object(local_store, "CATALOG_TEMP_FILE", root / "catalog.json.tmp")
         self.data_file_patch.start()
         self.temp_file_patch.start()
+        self.catalog_file_patch.start()
+        self.catalog_temp_file_patch.start()
         self.addCleanup(self.data_file_patch.stop)
         self.addCleanup(self.temp_file_patch.stop)
+        self.addCleanup(self.catalog_file_patch.stop)
+        self.addCleanup(self.catalog_temp_file_patch.stop)
         self.addCleanup(self.temp_directory.cleanup)
         self.product = {
             "id": "test-product",
@@ -40,6 +46,22 @@ class PaymentGatewayTests(unittest.TestCase):
         self.seed_loader = lambda: [copy.deepcopy(self.product)]
         local_store.load_products(self.seed_loader)
 
+    def test_public_catalog_contains_products_only(self):
+        catalog = json.loads(
+            local_store.CATALOG_FILE.read_text(encoding="utf-8")
+        )
+
+        self.assertEqual(catalog, [self.product])
+        self.assertNotIn("pending_orders", json.dumps(catalog))
+        self.assertNotIn("processed_orders", json.dumps(catalog))
+
+    def test_inventory_changes_update_the_publishable_catalog(self):
+        local_store.set_stock("test-product", 2, self.seed_loader)
+        catalog = json.loads(
+            local_store.CATALOG_FILE.read_text(encoding="utf-8")
+        )
+
+        self.assertEqual(catalog[0]["stock"], 2)
     def test_catalog_controls_order_total(self):
         app = type("App", (), {})()
         app.STORE_LOCK = threading.RLock()

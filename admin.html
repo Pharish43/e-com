@@ -57,10 +57,6 @@
       .notice { margin-top:14px; padding:11px 12px; border-radius:12px; background:#edf5ee; color:#356646; font-size:13px; line-height:1.5; }
       .notice.error { background:#fff0f0; color:#9b3540; }
       .empty { padding:24px 0; color:var(--muted); text-align:center; }
-      .login-panel { max-width:480px; padding:21px; margin:0 auto 20px; }
-      .login-panel[hidden],.layout[hidden],.logout[hidden] { display:none; }
-      .login-form { display:grid; gap:12px; margin-top:15px; }
-      .logout { border:1px solid var(--line); padding:8px 11px; border-radius:11px; background:white; font-weight:700; cursor:pointer; }
       @media(max-width:900px) {
         .layout { grid-template-columns:1fr; }
         .add-panel { order:-1; }
@@ -91,7 +87,6 @@
   <body>
     <header class="header">
       <a class="brand" href="/"><span class="brand-mark">F</span><span>Fernwood</span></a>
-      <button class="logout" id="logout" type="button" hidden>Sign out</button>
       <a class="header-link" href="/">← Back to storefront</a>
     </header>
     <main>
@@ -99,23 +94,14 @@
         <div><p class="eyebrow">Fernwood shop</p><h1>Inventory manager</h1></div>
         <span class="total" id="total-count" aria-live="polite"></span>
       </div>
-      <section class="panel login-panel" id="login-panel" aria-labelledby="login-title">
-        <h2 id="login-title">Inventory manager sign in</h2>
-        <p class="intro">Enter the inventory password configured for the hosted service.</p>
-        <form class="login-form" id="login-form">
-          <div class="field"><label for="admin-password">Inventory password</label><input id="admin-password" name="password" type="password" autocomplete="current-password" required /></div>
-          <button class="add-button" type="submit">Sign in</button>
-          <div class="notice error" id="login-notice" role="alert" hidden></div>
-        </form>
-      </section>
-      <div class="layout" id="manager-layout" hidden>
+      <div class="layout">
         <section class="panel inventory" aria-labelledby="inventory-title">
           <div class="panel-heading"><h2 id="inventory-title">Products &amp; stock</h2><button class="refresh" type="button" id="refresh">Refresh</button></div>
           <div class="product-list" id="product-list" aria-live="polite"><div class="empty">Loading inventory…</div></div>
         </section>
         <section class="panel add-panel" aria-labelledby="add-title">
           <h2 id="add-title">Add a product</h2>
-          <p class="intro">New products appear in the shop as soon as they’re saved.</p>
+          <p class="intro">Changes appear on the local storefront as soon as they’re saved. To publish them on Vercel, commit and push catalog.json.</p>
           <form class="form-grid" id="add-form">
             <div class="field"><label for="name">Product name</label><input id="name" name="name" maxlength="80" required /></div>
             <div class="field"><label for="category">Category</label><select id="category" name="category"><option>Plants</option><option>Pots</option><option>Tools</option></select></div>
@@ -130,21 +116,13 @@
             </div>
             <button class="add-button" type="submit">Add product</button>
           </form>
-          <div class="notice" id="notice" role="status" aria-live="polite">Changes are saved to the hosted inventory.</div>
+          <div class="notice" id="notice" role="status" aria-live="polite">Changes are saved on this computer.</div>
         </section>
       </div>
     </main>
-    <script src="/api-config.js"></script>
     <script>
       const productList = document.getElementById("product-list");
       const notice = document.getElementById("notice");
-      const loginPanel = document.getElementById("login-panel");
-      const managerLayout = document.getElementById("manager-layout");
-      const loginNotice = document.getElementById("login-notice");
-      const apiBaseUrl = (window.FERNWOOD_API_BASE_URL || "").replace(/\/+$/, "");
-      const apiUrl = (path) => `${apiBaseUrl}${path}`;
-      const loginStorageKey = "fernwood.inventoryPassword";
-      let adminPassword = sessionStorage.getItem(loginStorageKey) || "";
       let products = [];
       const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
@@ -157,31 +135,10 @@
         notice.classList.toggle("error", isError);
       }
       async function request(url, options = {}) {
-        const headers = new Headers(options.headers || {});
-        if (adminPassword) headers.set("X-Inventory-Password", adminPassword);
-        const response = await fetch(apiUrl(url), { ...options, headers });
+        const response = await fetch(url, options);
         const result = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(result.error || `Request failed (${response.status}).`);
         return result;
-      }
-      function showManager() {
-        loginPanel.hidden = true;
-        managerLayout.hidden = false;
-        document.getElementById("logout").hidden = false;
-      }
-      function showLogin(message = "") {
-        loginPanel.hidden = false;
-        managerLayout.hidden = true;
-        document.getElementById("logout").hidden = true;
-        loginNotice.textContent = message;
-        loginNotice.hidden = !message;
-      }
-      async function signIn(password) {
-        adminPassword = password;
-        await request("/api/admin/session");
-        sessionStorage.setItem(loginStorageKey, password);
-        showManager();
-        await refreshProducts();
       }
       async function refreshProducts() {
         productList.innerHTML = '<div class="empty">Loading inventory…</div>';
@@ -277,36 +234,7 @@
         }
       });
       document.getElementById("refresh").addEventListener("click", refreshProducts);
-      document.getElementById("login-form").addEventListener("submit", async (event) => {
-        event.preventDefault();
-        const password = new FormData(event.currentTarget).get("password");
-        try {
-          await signIn(String(password || ""));
-        } catch (error) {
-          adminPassword = "";
-          sessionStorage.removeItem(loginStorageKey);
-          showLogin(error.message);
-        }
-      });
-      document.getElementById("logout").addEventListener("click", () => {
-        adminPassword = "";
-        sessionStorage.removeItem(loginStorageKey);
-        showLogin();
-      });
-      if (adminPassword) {
-        signIn(adminPassword).catch((error) => {
-          adminPassword = "";
-          sessionStorage.removeItem(loginStorageKey);
-          showLogin(error.message);
-        });
-      } else {
-        request("/api/admin/session")
-          .then(async () => {
-            showManager();
-            await refreshProducts();
-          })
-          .catch(() => showLogin());
-      }
+      refreshProducts();
     </script>
   </body>
 </html>
