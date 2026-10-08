@@ -55,6 +55,16 @@ class PaymentGatewayTests(unittest.TestCase):
         self.assertNotIn("pending_orders", json.dumps(catalog))
         self.assertNotIn("processed_orders", json.dumps(catalog))
 
+    def test_loading_inventory_repairs_a_stale_public_catalog(self):
+        local_store.CATALOG_FILE.write_text("[]\n", encoding="utf-8")
+
+        products = local_store.load_products(self.seed_loader)
+        catalog = json.loads(
+            local_store.CATALOG_FILE.read_text(encoding="utf-8")
+        )
+
+        self.assertEqual(catalog, products)
+
     def test_inventory_changes_update_the_publishable_catalog(self):
         local_store.set_stock("test-product", 2, self.seed_loader)
         catalog = json.loads(
@@ -62,6 +72,21 @@ class PaymentGatewayTests(unittest.TestCase):
         )
 
         self.assertEqual(catalog[0]["stock"], 2)
+
+    def test_adding_product_updates_the_publishable_catalog(self):
+        added_product = {
+            **self.product,
+            "id": "new-product",
+            "name": "New product",
+            "stock": 7,
+        }
+        local_store.add_product(added_product, self.seed_loader)
+        catalog = json.loads(
+            local_store.CATALOG_FILE.read_text(encoding="utf-8")
+        )
+
+        self.assertEqual(catalog, [self.product, added_product])
+
     def test_catalog_controls_order_total(self):
         app = type("App", (), {})()
         app.STORE_LOCK = threading.RLock()

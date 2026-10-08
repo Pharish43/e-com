@@ -36,11 +36,23 @@
     "art": "custom"
   },
   {
-    "id": "jum",
-    "name": "jum",
+    "id": "jkl",
+    "name": "jkl",
     "category": "Plants",
-    "description": "bb",
-    "price": 44.0,
+    "description": "f",
+    "price": 44.76,
+    "rating": null,
+    "stock": 1,
+    "emoji": "🌱",
+    "color": "#dcebd8",
+    "art": "custom"
+  },
+  {
+    "id": "lkj",
+    "name": "lkj",
+    "category": "Plants",
+    "description": "",
+    "price": 45.0,
     "rating": null,
     "stock": 1,
     "emoji": "🌱",

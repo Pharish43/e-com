@@ -71,9 +71,13 @@ def _write_state(state: dict[str, Any]) -> None:
         os.replace(TEMP_FILE, DATA_FILE)
     except OSError as error:
         raise LocalStoreError(f"Could not save {DATA_FILE.name}: {error}") from error
+    _write_public_catalog(state["products"])
+
+
+def _write_public_catalog(products: list[dict[str, Any]]) -> None:
     try:
         CATALOG_TEMP_FILE.write_text(
-            json.dumps(state["products"], ensure_ascii=False, indent=2) + "\n",
+            json.dumps(products, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
         os.replace(CATALOG_TEMP_FILE, CATALOG_FILE)
@@ -85,7 +89,9 @@ def load_products(
     seed_loader: Callable[[], list[dict[str, Any]]],
 ) -> list[dict[str, Any]]:
     with STORE_LOCK:
-        return _read_state(seed_loader)["products"]
+        products = _read_state(seed_loader)["products"]
+        _write_public_catalog(products)
+        return products
 
 
 def add_product(
