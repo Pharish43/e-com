@@ -303,7 +303,6 @@
     </aside>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-    <script src="/api-config.js"></script>
     <script>
       const products = [];
       const artSvg = (type) => {
@@ -324,8 +323,7 @@
       const grid = document.getElementById("product-grid");
       const drawer = document.getElementById("cart-drawer");
       const overlay = document.getElementById("overlay");
-      const apiBaseUrl = (window.FERNWOOD_API_BASE_URL || "").replace(/\/+$/, "");
-      const apiUrl = (path) => `${apiBaseUrl}${path}`;
+      const isLocalStore = ["localhost", "127.0.0.1"].includes(location.hostname);
       let inventoryLoaded = false;
       let inventoryLoadError = false;
       let toastTimeout;
@@ -338,37 +336,53 @@
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
       })[char]);
       async function refreshInventory() {
-        if (location.protocol === "file:") {
-          inventoryLoadError = true;
-          renderProducts();
+        if (location.protocol === "file:" || !isLocalStore) {
+          await refreshPublishedCatalog();
           return;
         }
         try {
-          const response = await fetch(apiUrl("/api/products"), { cache: "no-store" });
+          const response = await fetch("/api/products", { cache: "no-store" });
           if (!response.ok) throw new Error(`Inventory request failed (${response.status}).`);
           const latest = await response.json();
           if (!Array.isArray(latest)) throw new Error("Inventory response must be a product list.");
+          applyProducts(latest);
           inventoryLoaded = true;
           inventoryLoadError = false;
-          if (JSON.stringify(products) === JSON.stringify(latest)) {
-            renderProducts();
-            return;
-          }
-          products.splice(0, products.length, ...latest);
-          for (const [id, quantity] of Object.entries(state.cart)) {
-            const product = products.find((item) => item.id === id);
-            if (!product) delete state.cart[id];
-            else if (product.stock < quantity) {
-              if (product.stock > 0) state.cart[id] = product.stock;
-              else delete state.cart[id];
-            }
-          }
+        } catch (error) {
+          console.error("Could not sync storefront inventory:", error);
+          await refreshPublishedCatalog();
+        }
+      }
+      function applyProducts(latest) {
+        if (JSON.stringify(products) === JSON.stringify(latest)) {
           renderProducts();
-          renderCart();
+          return;
+        }
+        products.splice(0, products.length, ...latest);
+        for (const [id, quantity] of Object.entries(state.cart)) {
+          const product = products.find((item) => item.id === id);
+          if (!product) delete state.cart[id];
+          else if (product.stock < quantity) {
+            if (product.stock > 0) state.cart[id] = product.stock;
+            else delete state.cart[id];
+          }
+        }
+        renderProducts();
+        renderCart();
+      }
+      async function refreshPublishedCatalog() {
+        try {
+          const response = await fetch("/catalog.json", { cache: "no-store" });
+          if (!response.ok) throw new Error(`Published catalog request failed (${response.status}).`);
+          const latest = await response.json();
+          if (!Array.isArray(latest)) throw new Error("Published catalog must be a product list.");
+          applyProducts(latest);
+          inventoryLoaded = true;
+          inventoryLoadError = false;
         } catch (error) {
           inventoryLoadError = true;
-          if (!products.length) renderProducts();
-          console.error("Could not sync storefront inventory:", error);
+          renderProducts();
+          console.error("Could not load published product catalog:", error);
         }
       }
       function visibleProducts() {
@@ -387,7 +401,7 @@
         const found = visibleProducts();
         document.getElementById("result-count").textContent = `${found.length} ${found.length === 1 ? "thoughtful find" : "thoughtful finds"}`;
         if (!found.length) {
-          const message = inventoryLoadError && !inventoryLoaded
+          const message = inventoryLoadError
             ? "The shop inventory could not be loaded. Please try again later."
             : !inventoryLoaded
               ? "Loading products from the inventory manager…"
@@ -553,7 +567,7 @@
         button.textContent = "Preparing secure checkout…";
         try {
           await loadRazorpayCheckout();
-          const orderResponse = await fetch(apiUrl("/api/payment/create-order"), {
+          const orderResponse = await fetch("/api/payment/create-order", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -584,7 +598,7 @@
             },
             handler: async (paymentResult) => {
               try {
-                const verificationResponse = await fetch(apiUrl("/api/payment/verify"), {
+                const verificationResponse = await fetch("/api/payment/verify", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify(paymentResult)
