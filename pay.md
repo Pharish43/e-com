@@ -104,22 +104,26 @@ three payment endpoints through Vercel to Render.
 
 1. Commit and push `render.yaml`, `vercel.json`, and the backend code changes.
    Do not include local payment state from `products.json`.
-2. In Render, create a **Blueprint** from this repository and deploy the
-   `fernwood-inventory-api` service defined by `render.yaml`. Keep its persistent
-   disk enabled; payment idempotency and stock updates are stored there.
+2. In Render, create a **Blueprint** from this repository and deploy the separate
+   `fernwood-inventory-api` web service defined by `render.yaml`. Do not use the
+   existing `chutmix.onrender.com` static-site service for the API; it serves the
+   storefront and does not provide `/healthz` or `/api/payment/*` routes. Keep the
+   API service's persistent disk enabled; payment idempotency and stock updates
+   are stored there.
 3. In the Render service's **Environment** settings, set these private values:
    `INVENTORY_ADMIN_PASSWORD`, `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`,
    `RAZORPAY_WEBHOOK_SECRET`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`, and
    `ORDER_NOTIFICATION_EMAIL`. Use Test Mode Razorpay credentials first. Do not put
    secrets in `vercel.json`, `index.html`, or Git.
-4. Wait for the service to deploy, then open
-   `https://fernwood-inventory-api.onrender.com/healthz`. It should return
-   `{"status":"ok"}`. If Render assigned a different service hostname, change the
-   three Render destinations in `vercel.json` to that hostname.
-   Push any hostname change so Vercel redeploys with the correct API rewrite.
-   Keep product publishing separate: publish only `catalog.json` as described
+4. Wait for the API service to deploy. Copy its public `onrender.com` URL from
+   Render and open `<API-SERVICE-URL>/healthz`. It must return `{"status":"ok"}`
+   before testing checkout. If Render assigned a hostname other than
+   `fernwood-inventory-api.onrender.com`, update the three destinations in
+   `vercel.json` to the actual API hostname, then push the change so Vercel
+   redeploys.
+5. Keep product publishing separate: publish only `catalog.json` as described
    above.
-5. Set the Razorpay Test Mode webhook URL to
+6. Set the Razorpay Test Mode webhook URL to
    `https://<your-vercel-domain>/api/payment/webhook` and use the same webhook
    secret configured in Render. Then test checkout from the live Vercel domain.
 
