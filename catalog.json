@@ -58,5 +58,17 @@
     "emoji": "🌱",
     "color": "#dcebd8",
     "art": "custom"
+  },
+  {
+    "id": "pl",
+    "name": "pl",
+    "category": "Plants",
+    "description": "j",
+    "price": 67.0,
+    "rating": null,
+    "stock": 1,
+    "emoji": "🌱",
+    "color": "#dcebd8",
+    "art": "custom"
   }
 ]
