@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f4f6f1" />
+    <title>Inventory manager — Fernwood</title>
+    <style>
+      :root { color-scheme: light; --ink:#183329; --muted:#68766e; --line:#dce4dc; --paper:#f4f6f1; --green:#19382c; font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+      * { box-sizing:border-box; }
+      body { margin:0; background:var(--paper); color:var(--ink); }
+      button,input,select,textarea { font:inherit; }
+      .header { display:flex; align-items:center; justify-content:space-between; min-height:76px; padding:0 clamp(18px,5vw,68px); border-bottom:1px solid var(--line); }
+      .brand { display:flex; align-items:center; gap:11px; color:var(--ink); text-decoration:none; font-size:23px; font-weight:820; letter-spacing:-1px; }
+      .brand-mark { display:grid; place-items:center; width:40px; height:40px; border-radius:13px; color:white; background:linear-gradient(145deg,#e64d79,#f5a77c); }
+      .header-link { color:var(--ink); font-size:14px; font-weight:700; text-decoration:none; }
+      main { width:min(1120px,calc(100% - 36px)); margin:38px auto 70px; }
+      .heading { display:flex; align-items:end; justify-content:space-between; gap:15px; margin-bottom:22px; }
+      .eyebrow { margin:0 0 6px; color:#708277; font-size:12px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; }
+      h1 { margin:0; font-size:clamp(30px,5vw,43px); letter-spacing:-.06em; }
+      .total { color:var(--muted); font-size:14px; }
+      .layout { display:grid; grid-template-columns:minmax(0,1.45fr) minmax(280px,.75fr); gap:20px; align-items:start; }
+      .panel { border:1px solid var(--line); border-radius:22px; background:white; box-shadow:0 10px 30px rgb(30 51 38 / 4%); }
+      .inventory { padding:19px; }
+      .panel-heading { display:flex; justify-content:space-between; align-items:center; gap:12px; padding-bottom:15px; border-bottom:1px solid var(--line); }
+      h2 { margin:0; font-size:19px; letter-spacing:-.04em; }
+      .refresh { border:1px solid var(--line); padding:8px 11px; border-radius:11px; background:white; font-weight:700; cursor:pointer; }
+      .inventory,.product-list,.product-row { width:100%; min-width:0; }
+      .product-list { display:grid; }
+      .product-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px 15px; align-items:center; padding:16px 0; border-bottom:1px solid #edf0ec; }
+      .product-row:last-child { border-bottom:0; }
+      .product-name { margin:0 0 4px; font-size:15px; font-weight:760; }
+      .product-subtitle { color:var(--muted); font-size:13px; }
+      .stock-pill { display:inline-flex; align-items:center; gap:6px; padding:6px 9px; border-radius:99px; background:#edf5ee; color:#3e7952; font-size:12px; font-weight:750; }
+      .stock-pill.low { background:#fbf0df; color:#94602e; }
+      .stock-controls { grid-column:1/-1; display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:12px; min-width:0; }
+      .quantity { display:flex; align-items:center; gap:8px; min-width:0; }
+      .quantity .field { display:block; min-width:0; }
+      .quantity input { width:clamp(72px,9vw,100px); height:36px; padding:0 9px; border:1px solid var(--line); border-radius:10px; }
+      .small-button { min-width:36px; height:36px; border:1px solid var(--line); border-radius:10px; background:#fff; font-weight:750; cursor:pointer; }
+      .small-button:hover,.refresh:hover { background:#f4f6f1; }
+      .row-actions { display:flex; flex-wrap:wrap; gap:7px; align-items:center; justify-content:flex-end; min-width:0; }
+      .save-stock { height:36px; padding:0 12px; border:0; border-radius:10px; background:var(--green); color:white; font-size:13px; font-weight:700; cursor:pointer; }
+      .delete { height:36px; padding:0 10px; border:1px solid #f0d4d8; border-radius:10px; background:#fff8f8; color:#a13947; font-size:13px; font-weight:700; cursor:pointer; }
+      .add-panel { padding:21px; }
+      .add-panel h2 { margin-bottom:7px; }
+      .intro { margin:0 0 17px; color:var(--muted); font-size:13px; line-height:1.5; }
+      .form-grid { display:grid; gap:12px; }
+      .field { display:grid; gap:6px; }
+      .field label { font-size:12px; font-weight:740; }
+      .field input,.field select,.field textarea { width:100%; min-height:41px; padding:9px 11px; border:1px solid var(--line); border-radius:11px; outline:none; background:white; color:var(--ink); }
+      .field textarea { min-height:76px; resize:vertical; }
+      .field input:focus,.field select:focus,.field textarea:focus { border-color:#81998a; box-shadow:0 0 0 3px rgb(98 129 106 / 12%); }
+      .two-fields { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+      .add-button { min-height:45px; margin-top:3px; border:0; border-radius:13px; background:var(--green); color:white; font-weight:750; cursor:pointer; }
+      .add-button:hover,.save-stock:hover { background:#28523f; }
+      .notice { margin-top:14px; padding:11px 12px; border-radius:12px; background:#edf5ee; color:#356646; font-size:13px; line-height:1.5; }
+      .notice.error { background:#fff0f0; color:#9b3540; }
+      .empty { padding:24px 0; color:var(--muted); text-align:center; }
+      @media(max-width:900px) {
+        .layout { grid-template-columns:1fr; }
+        .add-panel { order:-1; }
+        main { margin-top:25px; }
+      }
+      @media(max-width:560px) {
+        .header { gap:12px; }
+        .brand { font-size:20px; }
+        .header-link { text-align:right; }
+        main { width:min(100% - 24px,520px); }
+        .inventory { padding:15px; }
+        .product-row { grid-template-columns:minmax(0,1fr) auto; gap:10px; }
+        .stock-controls { grid-template-columns:minmax(0,1fr); justify-items:start; }
+        .row-actions { justify-content:flex-start; }
+        .heading { align-items:flex-start; flex-direction:column; }
+      }
+      @media(max-width:360px) {
+        .inventory { padding:12px; }
+        .product-row { grid-template-columns:minmax(0,1fr); }
+        .stock-pill { justify-self:start; }
+        .quantity { gap:5px; }
+        .small-button { min-width:32px; }
+        .quantity input { width:72px; }
+        .save-stock,.delete { padding:0 9px; font-size:12px; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="header">
+      <a class="brand" href="/"><span class="brand-mark">F</span><span>Fernwood</span></a>
+      <a class="header-link" href="/">← Back to storefront</a>
+    </header>
+    <main>
+      <div class="heading">
+        <div><p class="eyebrow">Fernwood shop</p><h1>Inventory manager</h1></div>
+        <span class="total" id="total-count" aria-live="polite"></span>
+      </div>
+      <div class="layout">
+        <section class="panel inventory" aria-labelledby="inventory-title">
+          <div class="panel-heading"><h2 id="inventory-title">Products &amp; stock</h2><button class="refresh" type="button" id="refresh">Refresh</button></div>
+          <div class="product-list" id="product-list" aria-live="polite"><div class="empty">Loading inventory…</div></div>
+        </section>
+        <section class="panel add-panel" aria-labelledby="add-title">
+          <h2 id="add-title">Add a product</h2>
+          <p class="intro">New products appear in the shop as soon as they’re saved.</p>
+          <form class="form-grid" id="add-form">
+            <div class="field"><label for="name">Product name</label><input id="name" name="name" maxlength="80" required /></div>
+            <div class="field"><label for="category">Category</label><select id="category" name="category"><option>Plants</option><option>Pots</option><option>Tools</option></select></div>
+            <div class="field"><label for="description">Description</label><textarea id="description" name="description" maxlength="240" placeholder="A short description for the shop"></textarea></div>
+            <div class="two-fields">
+              <div class="field"><label for="price">Price (₹)</label><input id="price" name="price" type="number" min="0.01" max="100000" step="0.01" required /></div>
+              <div class="field"><label for="stock">Starting stock</label><input id="stock" name="stock" type="number" min="0" max="1000000" step="1" value="1" required /></div>
+            </div>
+            <div class="two-fields">
+              <div class="field"><label for="emoji">Product icon</label><input id="emoji" name="emoji" maxlength="8" value="🌱" /></div>
+              <div class="field"><label for="color">Card color</label><input id="color" name="color" type="color" value="#dcebd8" /></div>
+            </div>
+            <button class="add-button" type="submit">Add product</button>
+          </form>
+          <div class="notice" id="notice" role="status" aria-live="polite">Changes are saved on this computer.</div>
+        </section>
+      </div>
+    </main>
+    <script>
+      const productList = document.getElementById("product-list");
+      const notice = document.getElementById("notice");
+      let products = [];
+      const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      })[char]);
+      const money = (value) => new Intl.NumberFormat("en-IN", {
+        style: "currency", currency: "INR", minimumFractionDigits: 2
+      }).format(Number(value));
+      function setNotice(message, isError = false) {
+        notice.textContent = message;
+        notice.classList.toggle("error", isError);
+      }
+      async function request(url, options = {}) {
+        const response = await fetch(url, options);
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || `Request failed (${response.status}).`);
+        return result;
+      }
+      async function refreshProducts() {
+        productList.innerHTML = '<div class="empty">Loading inventory…</div>';
+        try {
+          products = await request("/api/products");
+          renderProducts();
+          setNotice("Inventory is up to date.");
+        } catch (error) {
+          productList.innerHTML = '<div class="empty">Inventory could not be loaded.</div>';
+          setNotice(error.message, true);
+        }
+      }
+      function renderProducts() {
+        document.getElementById("total-count").textContent = `${products.length} ${products.length === 1 ? "product" : "products"}`;
+        if (!products.length) {
+          productList.innerHTML = '<div class="empty">No products yet. Add one to get started.</div>';
+          return;
+        }
+        productList.innerHTML = products.map((product) => `
+          <article class="product-row">
+            <div>
+              <h3 class="product-name">${escapeHtml(product.emoji)} ${escapeHtml(product.name)}</h3>
+              <span class="product-subtitle">${escapeHtml(product.category)} · ${money(product.price)}</span>
+            </div>
+            <span class="stock-pill ${product.stock < 10 ? "low" : ""}">${product.stock} in stock</span>
+            <div class="stock-controls">
+              <div class="quantity">
+                <button class="small-button" type="button" data-step="-1" data-id="${escapeHtml(product.id)}" aria-label="Remove one ${escapeHtml(product.name)} from stock">−</button>
+                <label class="field"><span class="sr-only">Stock quantity for ${escapeHtml(product.name)}</span><input aria-label="Stock quantity for ${escapeHtml(product.name)}" type="number" min="0" max="1000000" step="1" value="${product.stock}" data-stock="${escapeHtml(product.id)}" /></label>
+                <button class="small-button" type="button" data-step="1" data-id="${escapeHtml(product.id)}" aria-label="Add one ${escapeHtml(product.name)} to stock">+</button>
+              </div>
+              <div class="row-actions">
+                <button class="save-stock" type="button" data-save="${escapeHtml(product.id)}">Save stock</button>
+                <button class="delete" type="button" data-delete="${escapeHtml(product.id)}">Remove product</button>
+              </div>
+            </div>
+          </article>`).join("");
+      }
+      async function updateStock(id, stock) {
+        const updated = await request(`/api/products/${encodeURIComponent(id)}/stock`, {
+          method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stock })
+        });
+        products = products.map((product) => product.id === id ? updated : product);
+        renderProducts();
+        setNotice(`${updated.name} stock updated to ${updated.stock}.`);
+      }
+      productList.addEventListener("click", async (event) => {
+        const stepButton = event.target.closest("[data-step]");
+        const saveButton = event.target.closest("[data-save]");
+        const deleteButton = event.target.closest("[data-delete]");
+        try {
+          if (stepButton) {
+            const input = productList.querySelector(`[data-stock="${CSS.escape(stepButton.dataset.id)}"]`);
+            const nextStock = Number(input.value) + Number(stepButton.dataset.step);
+            if (nextStock < 0 || nextStock > 1_000_000) throw new Error("Stock must be between 0 and 1,000,000.");
+            input.value = nextStock;
+            await updateStock(stepButton.dataset.id, nextStock);
+          } else if (saveButton) {
+            const input = productList.querySelector(`[data-stock="${CSS.escape(saveButton.dataset.save)}"]`);
+            const stock = Number(input.value);
+            if (!Number.isInteger(stock) || stock < 0 || stock > 1_000_000) throw new Error("Enter a whole stock quantity between 0 and 1,000,000.");
+            await updateStock(saveButton.dataset.save, stock);
+          } else if (deleteButton) {
+            const product = products.find((item) => item.id === deleteButton.dataset.delete);
+            if (!product || !confirm(`Remove "${product.name}" from the shop?`)) return;
+            await request(`/api/products/${encodeURIComponent(product.id)}`, { method: "DELETE" });
+            products = products.filter((item) => item.id !== product.id);
+            renderProducts();
+            setNotice(`${product.name} removed from the shop.`);
+          }
+        } catch (error) {
+          setNotice(error.message, true);
+        }
+      });
+      document.getElementById("add-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const form = event.currentTarget;
+        const formData = new FormData(form);
+        const payload = Object.fromEntries(formData.entries());
+        payload.price = Number(payload.price);
+        payload.stock = Number(payload.stock);
+        try {
+          const product = await request("/api/products", {
+            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
+          });
+          products.push(product);
+          renderProducts();
+          form.reset();
+          document.getElementById("stock").value = "1";
+          setNotice(`${product.name} added to the shop.`);
+        } catch (error) {
+          setNotice(error.message, true);
+        }
+      });
+      document.getElementById("refresh").addEventListener("click", refreshProducts);
+      refreshProducts();
+    </script>
+  </body>
+</html>
